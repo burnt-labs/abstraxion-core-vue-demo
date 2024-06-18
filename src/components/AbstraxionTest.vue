@@ -2,24 +2,7 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { AbstraxionAuth } from "@burnt-labs/abstraxion-core";
 
-const abstraxion = new AbstraxionAuth(
-  "https://testnet-rpc.xion-api.com:443",
-  [
-    "xion1z70cvc08qv5764zeg3dykcyymj5z6nu4sqr7x8vl4zjef2gyp69s9mmdka",
-    {
-      address:
-        "xion1z70cvc08qv5764zeg3dykcyymj5z6nu4sqr7x8vl4zjef2gyp69s9mmdka",
-      amounts: [{ denom: "uxion", amount: "1000000" }],
-    },
-  ],
-  true,
-  [
-    {
-      denom: "uxion",
-      amount: "1000000",
-    },
-  ]
-);
+const abstraxion = new AbstraxionAuth();
 
 export default {
   setup() {
@@ -27,7 +10,29 @@ export default {
     const isPolling = ref(false);
     const isLoggedIn = ref(false);
 
-    // Login
+    // Configure the Abstraxion instance
+    const configureAbstraxion = () => {
+      abstraxion.configureAbstraxionInstance(
+        "https://testnet-rpc.xion-api.com:443",
+        undefined,
+        [
+          {
+            address:
+              "xion1z70cvc08qv5764zeg3dykcyymj5z6nu4sqr7x8vl4zjef2gyp69s9mmdka",
+            amounts: [{ denom: "uxion", amount: "1000000" }],
+          },
+        ],
+        true,
+        [
+          {
+            denom: "uxion",
+            amount: "1000000",
+          },
+        ]
+      );
+    };
+
+    // Explicit Login
     const triggerStartAbstraxion = async () => {
       isLoading.value = true;
       await abstraxion.login();
@@ -39,10 +44,10 @@ export default {
       if (!signerClient) {
         throw new Error("No signer client");
       }
-      if (!abstraxion.signArbWallet) {
+      if (!abstraxion.abstractAccount) {
         throw new Error("No sign arb wallet");
       }
-      const response = await abstraxion.signArbWallet?.signArb?.(
+      const response = await abstraxion.abstractAccount.signArb?.(
         signerClient.granteeAddress,
         "FOOBAR"
       );
@@ -63,7 +68,7 @@ export default {
 
     async function claimSeat(): Promise<void> {
       isLoading.value = true;
-      const bech32Address = await abstraxion.getAccountAddress();
+      const bech32Address = await abstraxion.getKeypairAddress();
       const msg = {
         sales: {
           claim_item: {
@@ -102,22 +107,26 @@ export default {
       isLoggedIn.value = newState;
     });
 
+    // Configure abstraxion
+    onMounted(() => {
+      configureAbstraxion();
+    });
+
+    // When redirected back to dapp, run login to trigger grant fetch and "login"
+    onMounted(async () => {
+      const searchParams = new URLSearchParams(window.location.search);
+      const isGranted = searchParams.get("granted");
+      const granter = searchParams.get("granter");
+      if (isGranted && granter) {
+        triggerStartAbstraxion();
+      }
+    });
+
     // Persistent State
     onMounted(async () => {
       isLoading.value = true;
       await abstraxion.authenticate();
       isLoading.value = false;
-    });
-
-    // Redirect Case
-    onMounted(async () => {
-      const searchParams = new URLSearchParams(window.location.search);
-      const isGranted = searchParams.get("granted");
-      if (isGranted) {
-        isPolling.value = true;
-        await abstraxion.pollForGrants();
-        isPolling.value = false;
-      }
     });
 
     // Cleanup on component unmount
